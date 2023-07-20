@@ -1,0 +1,251 @@
+* Aufgabe: Selection einer Halle und Ausgabe der summierten Maschinen als Dynpro. 
+* Auflistung der betroffenen Maschinen in ein ALV und Visualisierung der Wartungsintervalle in ALV!
+
+
+*&---------------------------------------------------------------------*
+*& Report Z306_DYNMASCHINE_22_106
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT Z306_DYNMASCHINE_22_106.
+
+*1) Felder der Struktur ins Dynpro nehmen
+tables: Z306_MASCHINE_DYN_22_106.
+
+* 2) Deklarieren der variablen für ok_code, sik_code, Objektreferenz , Referenz des Containers, Referenz des Alv, Tabelle für Alv, Variable um das Layout zu steuern, Variablen fcat für einzelne Spalte, it_fcat modifiziert die Spalten
+data: ok_code    type sy-UCOMM,
+      sik_code   type sy-UCOMM,
+      r_maschine type ref to Z306_CMASCHINE_22_106,
+      r_cont     type ref to cl_gui_custom_container,
+      r_alv      type ref to cl_gui_alv_grid,
+      it_alv     type table of Z306_Maschine_ALV_22_106,
+      wa_layo    type LVC_S_LAYO,
+      wa_fcat    type lvc_s_fcat,
+      it_fcat    type table of lvc_s_fcat.
+
+* 3) Start of selection keyword and call screen
+Start-of-selection.
+
+  Call screen 100.
+*&---------------------------------------------------------------------*
+*& Module STATUS_0100 OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+
+* 4) Modul output festlegen
+MODULE STATUS_0100 OUTPUT.
+* PF für Icons Festlegen diese Zeile in der Prüfung aufnehmen
+  SET PF-STATUS '100'.
+  SET TITLEBAR '100'.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+
+* 5) Modul input festlegen
+MODULE USER_COMMAND_0100 INPUT.
+
+* 6) Sik code initialisieren mit ok_code
+  sik_code = ok_code.
+  clear ok_code.
+
+* 7) Exit sik_code abfragen
+  if sik_code = 'EXIT'.
+    leave program.
+  endif.
+
+  if sik_code = 'SELECT'.
+
+* 8) Abfragen ob Eingabefeld befüllt ist
+    if Z306_Maschine_dyn_22_106-ID is not INITIAL.
+
+* 9) Objekt erzeugen
+      create object r_maschine exporting i_hallid = Z306_MASCHINE_DYN_22_106-ID exceptions ex_nf = 4. "Exception erzeugen und wenn auslöst wert 4 zuweisen der in subrc übernommen wird.
+
+* 10) Abfragen ob exception ausgelöst wurde und damit subrc auf 4 geändert wurde
+      if sy-SUBRC <> 4.
+
+* 11) Übernehmen der Felder der Instanzvariable im gleichnamigen Feld des Dyn
+        MOVE-CORRESPONDING r_maschine->GET_IV( ) to Z306_MASCHINE_DYN_22_106.
+* 12) Daten aus der Methode holen und in temporäre Variable speichern
+        data(it_tmp) = r_maschine->GET_MASCHINEN( ).
+
+* 13) Move correspondig der temp Variable in alv refresh der table
+        move-CORRESPONDING it_tmp to it_alv.
+
+
+
+* 14) Holen der Datensätze der it und speichern in wa des einzelnen Satzes
+
+        loop at it_alv into data(wa_alv).
+
+* 15) Verzweigen der Daten um Ampel mit 1,2,3 zu setzen
+          if wa_alv-PRODH > wa_alv-WARTH.
+            wa_alv-EXCEP = '1'. "Muss eigentlich ampel heißen falsch benannt
+          else.
+            wa_alv-EXCEP = '3'.
+          endif.
+
+* 16) Aktualisieren der internen alv Tabelle
+
+        modify it_alv from wa_alv.
+
+
+        endloop.
+
+        r_alv->REFRESH_TABLE_DISPLAY( ).
+
+      else.
+
+        message 'Keine Datensätze gefunden' type 'I'.
+
+
+      endif.
+
+
+    else.
+
+      message 'Keine Eingabe' type 'I'.
+
+    endif.
+
+  endif.
+
+
+
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*& Module INIT_CONTROLS OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+
+* 17) Modul schreiben
+
+MODULE INIT_CONTROLS OUTPUT.
+
+* 18) Abfrage ob es container schon gibt und container mit name cc1 anlegen
+
+if r_cont is not bound.
+  create object r_cont exporting CONTAINER_NAME = 'CC1'.
+
+* 19) Alv in das container Objekt setzen
+
+  create object r_alv exporting I_PARENT = r_cont.
+  wa_layo-GRID_TITLE = 'Wartungen'.
+  wa_layo-NO_TOOLBAR = 'X'.
+  wa_layo-EXCP_FNAME = 'EXCEP'.
+
+* 20) Finden des alten Feldnamen und ersetzen durch neuen Feldnamen
+
+  wa_fcat-FIELDNAME = 'WANZ'.
+  wa_fcat-COLTEXT = 'Bisherige Wartungen'.
+
+
+* 21) Anwenden an Tabelle field cat
+  append wa_fcat to it_fcat.
+  clear wa_fcat.
+
+
+* 22) Alv zum ersten Aufruf initialisieren
+
+  call method r_alv->SET_TABLE_FOR_FIRST_DISPLAY
+  exporting
+    is_layout = wa_layo
+    I_STRUCTURE_NAME = 'Z306_MASCHINE_ALV_22_106'
+  changing
+    it_fieldcatalog = it_fcat
+    it_outtab = it_alv.
+
+
+ENDIF.
+
+ENDMODULE.
+
+
+
+
+
+
+
+
+
+
+class Z306_CMASCHINE_22_106 definition
+  public
+  final
+  create public .
+
+public section.
+
+types: tt_maschinen type table of Z306_MASCHINE_ALVOAMPEL_22_106 with default key.
+
+METHODS:
+constructor IMPORTING i_hallid type Z306_halle-ID exceptions ex_nf,
+  get_iv returning value(e_iv) type Z306_MASCHINE_IV_22_106,
+  get_maschinen returning value(it_maschinen) type tt_maschinen.
+
+
+
+
+protected section.
+private section.
+
+data: iv type Z306_MASCHINE_IV_22_106.
+
+ENDCLASS.
+
+
+
+CLASS Z306_CMASCHINE_22_106 IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Z306_CMASCHINE_22_106->CONSTRUCTOR
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_HALLID                       TYPE        Z306_HALLE-ID
+* | [EXC!] EX_NF
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method constructor.
+    select single Z306_halle~id z306_halle~bezeichnung Count(*)
+    into iv
+    from Z306_halle
+    inner join Z306_maschine on Z306_maschine~hallid = Z306_halle~id
+    where Z306_halle~id = i_hallid
+    GROUP BY Z306_halle~id Z306_halle~bezeichnung.
+
+    if sy-SUBRC <> 0.
+      raise ex_nf.
+    endif.
+ endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Z306_CMASCHINE_22_106->GET_IV
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] E_IV                           TYPE        Z306_MASCHINE_IV_22_106
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+ method get_iv.
+   e_iv = iv.
+ endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Z306_CMASCHINE_22_106->GET_MASCHINEN
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] IT_MASCHINEN                   TYPE        TT_MASCHINEN
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+ method get_maschinen.
+   select Z306_Maschine~id Z306_art~bezeichnung Z306_maschine~wartungsh z306_maschine~prodh count(*) max( Z306_wartung~datum )
+     into table it_maschinen
+     from Z306_maschine
+     inner join Z306_art on Z306_art~id = Z306_maschine~ARTID
+     inner join Z306_wartung on Z306_wartung~maschid = Z306_maschine~id
+     where Z306_maschine~hallid = iv-ID
+     group by Z306_Maschine~id Z306_art~bezeichnung Z306_maschine~wartungsh Z306_maschine~prodh.
+ endmethod.
+ENDCLASS.

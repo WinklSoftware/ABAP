@@ -1,0 +1,445 @@
+* Aufgabe Selection einer Flugverbindung mit Gesellschaft, Verbindungsnummer und Datum und Anzeige der Verbindungsdaten in Dynpro Screen 1.
+* Auflistung aller Flüge an diesem Tag mit Auslastung in ALV des Screen1.
+* Anzeige aller Reisebüros, welche diese Flüge an diesen Tag anbieten, in ALV des Screen2.
+
+*&---------------------------------------------------------------------*
+*& Report Z306_APFLUG_22_106
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT Z306_APFLUG_22_106_PROG.
+*&---------------------------------------------------------------------*
+*& Module STATUS_0100 OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+
+tables: Z306_APFLUG_22_106_DYN.
+
+data:
+  ok_code  type sy-UCOMM,
+  sik_code type sy-UCOMM,
+  r_verb   type ref to Z306_APFLUG_22_106,
+  r_cont   type ref to CL_GUI_CUSTOM_CONTAINER,
+  r_alv    type ref to CL_GUI_ALV_GRID,
+  it_alv   type table of Z306_APFLUG_22_106_ALVDATA2,
+  wa_layo  type lvc_s_layo,
+  wa_fcat  type lvc_s_fcat,
+  it_fcat  type table of lvc_s_fcat.
+
+data: r_cont2  type ref to CL_GUI_CUSTOM_CONTAINER,
+      r_alv2   type ref to CL_GUI_CUSTOM_ALV_GRID,
+      it_alv2  type table of Z306_APFLUG_22_106_ALV_AGENCY,
+      wa_layo2 type LVC_S_LAYO,
+      wa_fcat2 type LVC_S_FCAT,
+      it_fcat2 type table of lvc_s_fcat.
+
+
+start-of-selection.
+
+  call screen 100.
+
+
+
+
+MODULE STATUS_0100 OUTPUT.
+  SET PF-STATUS '100'.
+  SET TITLEBAR '100'.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE USER_COMMAND_0100 INPUT.
+
+  sik_code = ok_code.
+  clear ok_code.
+
+  if sik_code = 'EXIT'.
+    leave program.
+
+  endif.
+
+  if sik_code = 'SELECT'.
+
+    if Z306_APFLUG_22_106_DYN-CARRID is not initial and Z306_APFLUG_22_106_DYN-CONNID is not initial and Z306_APFLUG_22_106_DYN-FLDATE is not initial.
+
+      create object r_verb exporting i_carrid = Z306_APFLUG_22_106_DYN-carrid i_connid = Z306_APFLUG_22_106_DYN-connid i_fldate = Z306_APFLUG_22_106_DYN-FLdate EXCEPTIONS ex_nf = 4.
+
+      if sy-DBCNT <> 4.
+
+        MOVE-CORRESPONDING r_verb->GET_IV( ) to Z306_APFLUG_22_106_DYN.
+
+        data(it_tmp) = r_verb->GET_FLUEGE_FROM_IV( ).
+
+        move-CORRESPONDING it_tmp to it_alv.
+
+        loop at it_alv into data(wa_tmp).
+          if wa_tmp-FREI > 20.
+            wa_tmp-AMPEL = '3'.
+          elseif wa_tmp-FREI >= 10.
+            wa_tmp-AMPEL = '2'.
+          else.
+            wa_tmp-AMPEL = '1'.
+          endif.
+
+          modify it_alv from wa_tmp.
+
+        endloop.
+
+
+        call screen 200.
+
+
+
+      else.
+
+        message 'Nichts gefunden' type 'I'.
+
+
+      endif.
+
+
+
+    else.
+
+      MESSAGE 'Daten unvollständig' type 'I'.
+
+
+    endif.
+
+  endif.
+
+
+
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*& Module STATUS_0200 OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+MODULE STATUS_0200 OUTPUT.
+  SET PF-STATUS '200'.
+  SET TITLEBAR '200'.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0200  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE USER_COMMAND_0200 INPUT.
+
+  sik_code = ok_code.
+
+  if sik_code = 'EXIT'.
+    leave program.
+  endif.
+
+  if sik_code = 'BACK'.
+    leave to screen 100.
+  endif.
+
+  if sik_code = 'TORB'.
+
+
+    data(it_tmp2) = r_verb->GET_AGENCYS( ).
+
+    move-CORRESPONDING it_tmp2 to it_alv2.
+
+    if r_alv2 is bound.
+      r_alv2->REFRESH_TABLE_DISPLAY( ).
+    endif.
+
+    call screen 300.
+
+  endif.
+
+
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*& Module INIT OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+MODULE INIT OUTPUT.
+
+  if Z306_APFLUG_22_106_DYN-CARRID is initial and Z306_APFLUG_22_106_DYN-CONNID is initial and Z306_APFLUG_22_106_DYN-FLDATE is initial.
+    z306_APFLUG_22_106_DYN-CARRID = 'LH'.
+    Z306_APFLUG_22_106_DYN-CONNID = '400'.
+    Z306_APFLUG_22_106_DYN-FLDATE = '20230103'.
+  endif.
+
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*& Module INIT_CUCO OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+MODULE INIT_CUCO OUTPUT.
+  if r_cont is not bound.
+    create object r_cont exporting CONTAINER_NAME = 'CC1'.
+
+    create object r_alv exporting I_PARENT = r_cont.
+
+
+    wa_layo-GRID_TITLE = 'Flüge an gewählten Datum'.
+    wa_layo-EXCP_FNAME = 'AMPEL'.
+    wa_layo-NO_TOOLBAR = 'x'.
+
+    wa_fcat-FIELDNAME = 'SEATSOCC'.
+    wa_fcat-TOOLTIP = 'Tipp der geb. Sitze'.
+    wa_fcat-COLTEXT = 'M. Sitze'.
+
+    append wa_fcat to it_fcat.
+    clear wa_fcat.
+
+    wa_fcat-FIELDNAME = 'SEATSMAX'.
+    wa_fcat-TOOLTIP = 'Tipp der Max. Sitze'.
+    wa_fcat-COLTEXT = 'Max. Sitze'.
+
+    append wa_fcat to it_fcat.
+    clear wa_fcat.
+
+    wa_fcat-FIELDNAME = 'AMPEL'.
+    wa_fcat-COLTEXT = 'Ampel'.
+
+    append wa_fcat to it_fcat.
+    clear wa_fcat.
+
+    wa_fcat-FIELDNAME = 'FREI'.
+    wa_fcat-TOOLTIP = 'Freie Sitze'.
+    wa_fcat-COLTEXT = 'Frei'.
+
+    append wa_fcat to it_fcat.
+    clear wa_fcat.
+
+
+    call method r_alv->SET_TABLE_FOR_FIRST_DISPLAY EXPORTING IS_LAYOUT = wa_layo I_STRUCTURE_NAME = 'Z306_APFLUG_22_106_ALVDATA2' CHANGING IT_FIELDCATALOG = it_fcat IT_OUTTAB = it_alv.
+
+
+
+
+  endif.
+
+  if r_cont2 is not bound.
+    create object r_cont2 exporting CONTAINER_NAME = 'CC2'.
+
+    create object r_alv2 exporting I_PARENT = r_cont2.
+
+    wa_layo2-GRID_TITLE = 'Reisebüros'.
+    wa_layo2-NO_TOOLBAR = 'X'.
+
+    wa_fcat2-FIELDNAME = 'AGENCYNUM'.
+    wa_fcat2-COLTEXT = 'Agenturnummer'.
+
+    append wa_fcat2 to it_fcat2.
+    clear wa_fcat2.
+
+
+    wa_fcat2-FIELDNAME = 'STREET'.
+    wa_fcat2-COLTEXT = 'Strasse'.
+
+    append wa_fcat2 to it_fcat2.
+    clear wa_fcat2.
+
+    wa_fcat2-FIELDNAME = 'CITY'.
+    wa_fcat2-COLTEXT = 'Stadt'.
+
+    append wa_fcat2 to it_fcat2.
+    clear wa_fcat2.
+
+    call method r_alv2->SET_TABLE_FOR_FIRST_DISPLAY EXPORTING IS_LAYOUT = wa_layo2 I_STRUCTURE_NAME = 'Z306_APFLUG_22_106_ALV_AGENCY' CHANGING IT_FIELDCATALOG = it_fcat2 IT_OUTTAB = it_alv2.
+
+  endif.
+
+
+
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*& Module STATUS_0300 OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+MODULE STATUS_0300 OUTPUT.
+  SET PF-STATUS '300'.
+  SET TITLEBAR '300'.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0300  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+
+
+MODULE USER_COMMAND_0300 INPUT.
+
+  sik_code = ok_code.
+  clear ok_code.
+
+  if sik_code = 'EXIT'.
+    leave program.
+  endif.
+
+  if sik_code = 'BACK'.
+    leave to screen 200.
+  endif.
+
+ENDMODULE.
+
+
+
+class Z306_APFLUG_22_106 definition
+  public
+  final
+  create public .
+
+public section.
+
+types: tt_flug type table of Z306_APFLUG_22_106_ALVDATA with default key, tt_agency type table of Z306_APFLUG_22_106_ALV_AGENCY with default key.
+
+
+
+methods:
+constructor importing i_carrid type sflight-carrid i_connid type sflight-connid i_fldate type sflight-fldate exceptions ex_nf,
+get_iv returning value(e_iv) type Z306_APFLUG_22_106_DYN,
+get_fluege_from_iv returning value(e_itfluege) type tt_flug,
+get_agencys returning value(it_agencys) type tt_agency.
+
+class-methods:
+get_fluege importing i_fldate type sflight-FLDATE returning value(e_itfluege) type tt_flug.
+
+
+
+protected section.
+private section.
+
+data: iv type Z306_APFLUG_22_106_DYN.
+
+
+
+ENDCLASS.
+
+
+
+CLASS Z306_APFLUG_22_106 IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Z306_APFLUG_22_106->CONSTRUCTOR
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_CARRID                       TYPE        SFLIGHT-CARRID
+* | [--->] I_CONNID                       TYPE        SFLIGHT-CONNID
+* | [--->] I_FLDATE                       TYPE        SFLIGHT-FLDATE
+* | [EXC!] EX_NF
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method constructor.
+
+select single sflight~carrid sflight~connid sflight~fldate spfli~cityfrom spfli~cityto spfli~fltime sflight~price sflight~currency scarr~carrname
+into iv
+from sflight
+inner join spfli on sflight~carrid = spfli~carrid and sflight~connid = spfli~connid
+inner join scarr on spfli~carrid = scarr~carrid
+where sflight~carrid = i_carrid and sflight~connid = i_connid and sflight~fldate = i_fldate.
+
+if sy-SUBRC <> 0.
+  raise ex_nf.
+endif.
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Z306_APFLUG_22_106->GET_AGENCYS
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] IT_AGENCYS                     TYPE        TT_AGENCY
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method get_agencys.
+
+select distinct stravelag~agencynum name street city
+into table it_agencys
+from stravelag
+inner join sbook on stravelag~AGENCYNUM = sbook~AGENCYNUM
+ where sbook~FLDATE = iv-FLDATE.
+
+
+
+
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method Z306_APFLUG_22_106=>GET_FLUEGE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_FLDATE                       TYPE        SFLIGHT-FLDATE
+* | [<-()] E_ITFLUEGE                     TYPE        TT_FLUG
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method get_fluege.
+
+select scarr~carrname sflight~connid count( * ) sflight~seatsocc sflight~seatsmax
+into table e_itfluege
+from sflight
+inner join sbook on sflight~carrid = sbook~carrid and sflight~connid = sbook~connid and sflight~fldate = sbook~fldate
+inner join scarr on scarr~carrid = sflight~carrid
+where sflight~fldate = i_fldate
+GROUP BY scarr~carrname sflight~connid sflight~seatsocc sflight~seatsmax.
+
+loop at e_itfluege into data(wa_temp).
+
+wa_temp-FREI = wa_temp-SEATSMAX - wa_temp-SEATSOCC.
+
+modify e_itfluege from wa_temp.
+
+endloop.
+
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Z306_APFLUG_22_106->GET_FLUEGE_FROM_IV
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] E_ITFLUEGE                     TYPE        TT_FLUG
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method get_fluege_from_iv.
+
+select scarr~carrname sflight~connid count( * ) sflight~seatsocc sflight~seatsmax
+into table e_itfluege
+from sflight
+inner join sbook on sflight~carrid = sbook~carrid and sflight~connid = sbook~connid and sflight~fldate = sbook~fldate
+inner join scarr on scarr~carrid = sflight~carrid
+where sflight~fldate = iv-FLDATE
+GROUP BY scarr~carrname sflight~connid sflight~seatsocc sflight~seatsmax.
+
+loop at e_itfluege into data(wa_temp).
+
+wa_temp-FREI = wa_temp-SEATSMAX - wa_temp-SEATSOCC.
+
+modify e_itfluege from wa_temp.
+
+endloop.
+
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Z306_APFLUG_22_106->GET_IV
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] E_IV                           TYPE        Z306_APFLUG_22_106_DYN
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method get_iv.
+
+e_iv = iv.
+
+
+endmethod.
+ENDCLASS.
+
+
+
